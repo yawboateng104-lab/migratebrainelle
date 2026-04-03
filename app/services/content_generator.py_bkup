@@ -1,0 +1,43 @@
+def generate_script_from_idea(content_idea, campaign):
+    return {
+        "hook": content_idea.hook,
+        "script_text": (
+            f"{content_idea.hook}\n\n"
+            f"If you're someone in {campaign.audience}, this is exactly why I built {campaign.app_name}. "
+            f"{campaign.app_description}. "
+            f"This post focuses on: {content_idea.angle}. "
+            f"Try it today."
+        ),
+        "caption": (
+            f"{content_idea.title}\n\n"
+            f"{campaign.app_description}\n\n"
+            f"CTA: {campaign.cta}"
+        ),
+        "hashtags": "#app #startup #founder #productivity #motivation",
+        "voiceover_text": (
+            f"{content_idea.hook} "
+            f"I built {campaign.app_name} for {campaign.audience}. "
+            f"{campaign.app_description} "
+            f"{campaign.cta}"
+        ),
+    }
+
+
+def generate_video_prompt_from_script(content_idea, campaign, script):
+    return {
+        "prompt_text": (
+            f"Create a short Instagram reel video for {campaign.app_name}. "
+            f"Style: {campaign.tone}. "
+            f"Topic: {content_idea.title}. "
+            f"Hook: {script.hook}. "
+            f"Use a founder-style talking head format with natural confidence and social-media pacing."
+        ),
+        "shot_list": (
+            "1. Close-up talking head intro with strong hook.\n"
+            "2. Mid-shot explaining the problem.\n"
+            "3. App value statement.\n"
+            "4. CTA ending shot."
+        ),
+        "visual_style": "Founder-style, inspirational, clean social media aesthetic",
+        "camera_notes": "Vertical 9:16, smooth handheld feel, natural eye contact, engaging delivery",
+    }

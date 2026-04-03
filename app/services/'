@@ -1,0 +1,161 @@
+from app.pg_tables import (
+    Approval,
+    Campaign,
+    ContentIdea,
+    PublishedPost,
+    Script,
+    VideoPrompt,
+)
+from app.services.asset_generator import generate_asset_from_video_prompt
+from app.services.content_generator import (
+    generate_script_from_idea,
+    generate_video_prompt_from_script,
+)
+from app.services.publisher import publish_to_instagram
+
+
+class PipelineError(Exception):
+    pass
+
+
+class AssetGenerationPayload:
+    def __init__(self, content_idea_id: int, prompt_text: str, source_image_s3_key: str):
+        self.content_idea_id = content_idea_id
+        self.prompt_text = prompt_text
+        self.source_image_s3_key = source_image_s3_key
+
+
+def build_higgsfield_prompt(video_prompt_text: str) -> str:
+    base_prompt = (video_prompt_text or "").strip()
+
+    provider_prompt = f"""
+{base_prompt}
+
+Wide shot, low angle. The founder stands confidently in the existing building hallway; maintain the original architectural background with a subtle cinematic depth-of-field blur. Digital holographic tax charts and green growth arrows gently float and animate in the foreground. A smooth, slow cinematic pan right follows the subject's gaze. High-contrast 'Wolf of Wall Street' style lighting, 35mm lens, corporate blue color grading. 4K, photorealistic.
+
+Constraints:
+- Preserve facial identity
+- Keep subject realistic
+- Maintain original hallway environment
+- Avoid distortions or unrealistic motion
+- Social-media-ready cinematic quality
+""".strip()
+
+    return provider_prompt[:1000]
+
+
+def run_content_pipeline(content_idea_id: int, source_image_s3_key: str, db):
+    content_idea = db.get(ContentIdea, content_idea_id)
+    if not content_idea:
+        raise PipelineError("Content idea not found")
+
+    campaign = db.get(Campaign, content_idea.campaign_id)
+    if not campaign:
+        raise PipelineError("Campaign not found")
+
+    approval = (
+        db.query(Approval)
+        .filter(Approval.content_idea_id == content_idea_id)
+        .first()
+    )
+    if not approval or approval.status != "approved":
+        raise PipelineError("Content idea must be approved before running pipeline")
+
+    # ---------------- SCRIPT ----------------
+    script = (
+        db.query(Script)
+        .filter(Script.content_idea_id == content_idea_id)
+        .first()
+    )
+    if not script:
+        generated_script = generate_script_from_idea(
+            content_idea=content_idea,
+            campaign=campaign,
+        )
+        script = Script(
+            content_idea_id=content_idea_id,
+            hook=generated_script["hook"],
+            script_text=generated_script["script_text"],
+            caption=generated_script["caption"],
+            hashtags=generated_script["hashtags"],
+            voiceover_text=generated_script["voiceover_text"],
+        )
+        db.add(script)
+        db.commit()
+        db.refresh(script)
+
+    # ---------------- VIDEO PROMPT ----------------
+    video_prompt = (
+        db.query(VideoPrompt)
+        .filter(VideoPrompt.content_idea_id == content_idea_id)
+        .first()
+    )
+    if not video_prompt:
+        generated_video_prompt = generate_video_prompt_from_script(
+            content_idea=content_idea,
+            campaign=campaign,
+            script=script,
+        )
+        video_prompt = VideoPrompt(
+            content_idea_id=content_idea_id,
+            prompt_text=generated_video_prompt["prompt_text"],
+            shot_list=generated_video_prompt["shot_list"],
+            visual_style=generated_video_prompt["visual_style"],
+            camera_notes=generated_video_prompt["camera_notes"],
+        )
+        db.add(video_prompt)
+        db.commit()
+        db.refresh(video_prompt)
+
+    # ---------------- ASSET ----------------
+    higgsfield_prompt = build_higgsfield_prompt(video_prompt.prompt_text)
+
+    payload = AssetGenerationPayload(
+        content_idea_id=content_idea_id,
+        prompt_text=higgsfield_prompt,
+        source_image_s3_key=source_image_s3_key,
+    )
+
+    asset = generate_asset_from_video_prompt(payload, db)
+    if not asset:
+        raise PipelineError("Failed to generate asset")
+
+    # ---------------- PUBLISH ----------------
+    published_post = (
+        db.query(PublishedPost)
+        .filter(PublishedPost.generated_asset_id == asset.id)
+        .first()
+    )
+
+    if not published_post:
+        published = publish_to_instagram(
+            asset_url=asset.asset_url,
+            caption=script.caption,
+            media_type=asset.asset_type,
+        )
+
+        published_post = PublishedPost(
+            content_idea_id=content_idea_id,
+            generated_asset_id=asset.id,
+            workflow="higgsfield",
+            provider="higgsfield",
+            platform=published["platform"],
+            platform_post_id=published["platform_post_id"],
+            publish_status=published["publish_status"],
+            caption_used=published["caption_used"],
+        )
+        db.add(published_post)
+        db.commit()
+        db.refresh(published_post)
+
+    return {
+        "workflow": "higgsfield",
+        "content_idea_id": content_idea_id,
+        "script_id": script.id,
+        "video_prompt_id": video_prompt.id,
+        "generated_asset_id": asset.id,
+        "published_post_id": published_post.id if published_post else None,
+        "publish_status": published_post.publish_status if published_post else None,
+        "asset_url": asset.asset_url,
+        "caption_used": script.caption,
+    }

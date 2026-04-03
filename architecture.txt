@@ -1,0 +1,49 @@
+google_sheets/
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── db.py
+│   ├── dependencies.py
+│   │
+│   ├── apiroutes/
+│   │   ├── __init__.py
+│   │   ├── assets.py
+│   │   ├── uploads.py
+│   │   ├── publishing.py
+│   │   └── health.py
+│   │
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── asset.py
+│   │   ├── upload.py
+│   │   └── publishing.py
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── asset_generator.py
+│   │   ├── asset_storage.py
+│   │   ├── image_presign_service.py
+│   │   └── publishing_service.py
+│   │
+│   ├── integrations/
+│   │   ├── __init__.py
+│   │   ├── higgsfield.py
+│   │   ├── s3.py
+│   │   ├── instagram.py
+│   │   └── meta_graph.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── asset.py
+│   │   ├── content_idea.py
+│   │   └── publish_job.py
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       ├── logging.py
+│       ├── filenames.py
+│       └── time.py
+│
+├── .env
+├── requirements.txt
+└── README.md

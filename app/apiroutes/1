@@ -1,0 +1,61 @@
+from fastapi import APIRouter, HTTPException, status
+
+from app.schemas.asset import (
+    GenerateVideoAssetRequest,
+    GenerateVideoAssetResponse,
+)
+from app.services.asset_generator import generate_asset_from_video_prompt
+from app.integrations.higgsfield import HiggsfieldError
+from app.integrations.s3 import S3Error
+from app.services.asset_storage import AssetStorageError
+
+router = APIRouter(prefix="/assets", tags=["assets"])
+
+
+@router.post(
+    "/generate-video",
+    response_model=GenerateVideoAssetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def generate_video_asset(payload: GenerateVideoAssetRequest) -> GenerateVideoAssetResponse:
+    """
+    Generate a video asset from:
+    - content_idea_id
+    - prompt_text
+    - source_image_s3_key
+
+    Flow:
+    1. Presign the private source image from S3
+    2. Send image + prompt to Higgsfield
+    3. Poll until completed
+    4. Download the finished video
+    5. Upload the final video to S3
+    6. Return normalized asset metadata
+    """
+    try:
+        result = generate_asset_from_video_prompt(payload)
+        return GenerateVideoAssetResponse(**result)
+
+    except HiggsfieldError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Higgsfield generation failed: {exc}",
+        ) from exc
+
+    except S3Error as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"S3 operation failed: {exc}",
+        ) from exc
+
+    except AssetStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Asset storage failed: {exc}",
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected asset generation error: {exc}",
+        ) from exc
